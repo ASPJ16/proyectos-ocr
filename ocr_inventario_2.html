@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Escáner OCR - Inventario</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, Arial, sans-serif; background: #0f172a; color: #f1f5f9; min-height: 100vh; }
+  header { background: #1e293b; padding: 16px 20px; border-bottom: 1px solid #334155; }
+  header h1 { font-size: 18px; font-weight: 600; color: #60a5fa; }
+  header p { font-size: 12px; color: #94a3b8; margin-top: 2px; }
+  .container { padding: 16px; max-width: 600px; margin: 0 auto; }
+
+  /* Video */
+  #video-wrap { position: relative; background: #000; border-radius: 12px; overflow: hidden; width: 100%; aspect-ratio: 4/3; margin-bottom: 12px; border: 2px solid #334155; }
+  #video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .corner { position: absolute; width: 28px; height: 28px; border-color: #4ade80; border-style: solid; }
+  .tl { top: 10px; left: 10px; border-width: 3px 0 0 3px; }
+  .tr { top: 10px; right: 10px; border-width: 3px 3px 0 0; }
+  .bl { bottom: 10px; left: 10px; border-width: 0 0 3px 3px; }
+  .br { bottom: 10px; right: 10px; border-width: 0 3px 3px 0; }
+  .scan-line { position: absolute; left: 0; right: 0; height: 2px; background: #4ade80; animation: scan 2s linear infinite; display: none; }
+  @keyframes scan { 0%{top:0} 100%{top:100%} }
+
+  /* Botones */
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  button { padding: 10px 16px; border-radius: 8px; border: none; font-size: 14px; font-weight: 500; cursor: pointer; flex: 1; min-width: 120px; }
+  .btn-primary { background: #2563eb; color: #fff; }
+  .btn-secondary { background: #334155; color: #f1f5f9; }
+  .btn-success { background: #16a34a; color: #fff; }
+  .btn-danger { background: #dc2626; color: #fff; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Status */
+  #status { font-size: 13px; color: #94a3b8; background: #1e293b; padding: 10px 14px; border-radius: 8px; margin-bottom: 12px; }
+
+  /* Sección texto */
+  #seccion-texto { display: none; }
+  .label { font-size: 12px; color: #94a3b8; margin-bottom: 6px; }
+  #texto-detectado { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 12px; margin-bottom: 12px; min-height: 70px; line-height: 2; }
+  .palabra { display: inline-block; margin: 3px; padding: 4px 10px; border-radius: 6px; cursor: pointer; border: 1.5px solid #334155; font-size: 14px; background: #0f172a; color: #e2e8f0; }
+  .palabra.sel { background: #2563eb; color: #fff; border-color: #1d4ed8; }
+
+  /* Asignar */
+  .asignar-row { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+  select { background: #1e293b; color: #f1f5f9; border: 1px solid #334155; border-radius: 8px; padding: 8px 12px; font-size: 14px; flex: 1; }
+  .btn-asignar { background: #0891b2; color: #fff; padding: 8px 14px; border-radius: 8px; border: none; font-size: 14px; cursor: pointer; white-space: nowrap; flex: none; }
+
+  /* Campos */
+  #campos { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+  .campo-box { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 10px 12px; }
+  .campo-label { font-size: 11px; color: #94a3b8; margin-bottom: 4px; }
+  .campo-valor { font-size: 14px; font-weight: 600; color: #60a5fa; min-height: 20px; }
+
+  /* Tabla */
+  #tabla-wrap { display: none; margin-top: 16px; }
+  .tabla-title { font-size: 14px; font-weight: 600; color: #f1f5f9; margin-bottom: 8px; }
+  .tabla-scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 400px; }
+  th { background: #2563eb; color: #fff; padding: 8px 10px; text-align: left; }
+  td { padding: 7px 10px; border-bottom: 1px solid #1e293b; color: #cbd5e1; }
+  tr:nth-child(even) td { background: #1e293b; }
+
+  .badge { display: inline-block; background: #16a34a; color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 20px; margin-left: 6px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📦 Escáner OCR — Inventario</h1>
+  <p>Escanea etiquetas y extrae texto con un toque</p>
+</header>
+
+<div class="container">
+
+  <!-- Cámara -->
+  <div id="video-wrap">
+    <video id="video" autoplay playsinline muted></video>
+    <div class="scan-line" id="scan-line"></div>
+    <div class="corner tl"></div>
+    <div class="corner tr"></div>
+    <div class="corner bl"></div>
+    <div class="corner br"></div>
+  </div>
+  <canvas id="canvas" style="display:none"></canvas>
+
+  <!-- Botones -->
+  <div class="btn-row">
+    <button class="btn-primary" onclick="iniciarCamara()">📷 Iniciar cámara</button>
+    <button class="btn-secondary" id="btn-capturar" onclick="capturar()" disabled>🔍 Escanear</button>
+  </div>
+
+  <!-- Estado -->
+  <div id="status">Presiona "Iniciar cámara" para comenzar.</div>
+
+  <!-- Texto detectado -->
+  <div id="seccion-texto">
+    <p class="label">Toca las palabras que quieres extraer:</p>
+    <div id="texto-detectado"></div>
+
+    <div class="asignar-row">
+      <select id="campo-select">
+        <option value="codigo">Código</option>
+        <option value="descripcion">Descripción</option>
+        <option value="cantidad">Cantidad</option>
+        <option value="precio">Precio</option>
+        <option value="fecha">Fecha</option>
+      </select>
+      <button class="btn-asignar" onclick="asignarCampo()">✅ Asignar</button>
+    </div>
+
+    <!-- Campos extraídos -->
+    <div id="campos">
+      <div class="campo-box"><div class="campo-label">Código</div><div class="campo-valor" id="v-codigo">—</div></div>
+      <div class="campo-box"><div class="campo-label">Descripción</div><div class="campo-valor" id="v-descripcion">—</div></div>
+      <div class="campo-box"><div class="campo-label">Cantidad</div><div class="campo-valor" id="v-cantidad">—</div></div>
+      <div class="campo-box"><div class="campo-label">Precio</div><div class="campo-valor" id="v-precio">—</div></div>
+      <div class="campo-box" style="grid-column: span 2;"><div class="campo-label">Fecha</div><div class="campo-valor" id="v-fecha">—</div></div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn-success" onclick="agregarRegistro()">➕ Agregar a inventario</button>
+      <button class="btn-secondary" onclick="reiniciar()">🔄 Nueva captura</button>
+    </div>
+  </div>
+
+  <!-- Tabla inventario -->
+  <div id="tabla-wrap">
+    <p class="tabla-title">📋 Inventario <span class="badge" id="contador">0</span></p>
+    <div class="tabla-scroll">
+      <table>
+        <thead><tr><th>#</th><th>Código</th><th>Descripción</th><th>Cant.</th><th>Precio</th><th>Fecha</th></tr></thead>
+        <tbody id="tabla-body"></tbody>
+      </table>
+    </div>
+    <div class="btn-row" style="margin-top:10px">
+      <button class="btn-primary" onclick="exportarCSV()">📥 Exportar CSV</button>
+      <button class="btn-danger" onclick="limpiarInventario()">🗑️ Limpiar todo</button>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js"></script>
+<script>
+let stream = null;
+let inventario = [];
+let palabrasSeleccionadas = [];
+
+async function iniciarCamara() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false
+    });
+    document.getElementById('video').srcObject = stream;
+    document.getElementById('btn-capturar').disabled = false;
+    setStatus('✅ Cámara activa. Apunta a una etiqueta y presiona Escanear.');
+  } catch(e) {
+    setStatus('❌ No se pudo acceder a la cámara: ' + e.message);
+  }
+}
+
+async function capturar() {
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
+  canvas.width = video.videoWidth || 640;
+  canvas.height = video.videoHeight || 480;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+
+  document.getElementById('scan-line').style.display = 'block';
+  document.getElementById('btn-capturar').disabled = true;
+  setStatus('🔍 Analizando texto... (puede tardar unos segundos)');
+
+  try {
+    const result = await Tesseract.recognize(canvas, 'spa+eng', {});
+    const texto = result.data.text.trim();
+    document.getElementById('scan-line').style.display = 'none';
+    document.getElementById('btn-capturar').disabled = false;
+
+    if (!texto || texto.length < 2) {
+      setStatus('⚠️ No se detectó texto. Mejora la iluminación e intenta de nuevo.');
+      return;
+    }
+
+    mostrarPalabras(texto);
+    document.getElementById('seccion-texto').style.display = 'block';
+    setStatus('✅ Texto detectado. Selecciona palabras y asígnalas a cada campo.');
+  } catch(e) {
+    document.getElementById('scan-line').style.display = 'none';
+    document.getElementById('btn-capturar').disabled = false;
+    setStatus('❌ Error al procesar: ' + e.message);
+  }
+}
+
+function mostrarPalabras(texto) {
+  palabrasSeleccionadas = [];
+  const contenedor = document.getElementById('texto-detectado');
+  contenedor.innerHTML = '';
+  texto.split(/\s+/).filter(p => p.length > 0).forEach((palabra, i) => {
+    const span = document.createElement('span');
+    span.className = 'palabra';
+    span.textContent = palabra;
+    span.dataset.idx = i;
+    span.onclick = () => {
+      const key = palabra + '_' + i;
+      const pos = palabrasSeleccionadas.indexOf(key);
+      if (pos === -1) { palabrasSeleccionadas.push(key); span.classList.add('sel'); }
+      else { palabrasSeleccionadas.splice(pos, 1); span.classList.remove('sel'); }
+    };
+    contenedor.appendChild(span);
+  });
+}
+
+function asignarCampo() {
+  if (palabrasSeleccionadas.length === 0) { alert('Selecciona al menos una palabra.'); return; }
+  const campo = document.getElementById('campo-select').value;
+  const valor = palabrasSeleccionadas.map(p => p.split('_')[0]).join(' ');
+  document.getElementById('v-' + campo).textContent = valor;
+  document.querySelectorAll('.palabra.sel').forEach(el => el.classList.remove('sel'));
+  palabrasSeleccionadas = [];
+}
+
+function agregarRegistro() {
+  const c = id => document.getElementById('v-' + id).textContent;
+  if (c('codigo') === '—' && c('descripcion') === '—') {
+    alert('Asigna al menos el código o descripción.');
+    return;
+  }
+  inventario.push({
+    codigo: c('codigo'),
+    descripcion: c('descripcion'),
+    cantidad: c('cantidad'),
+    precio: c('precio'),
+    fecha: c('fecha') === '—' ? new Date().toLocaleDateString('es-EC') : c('fecha')
+  });
+  actualizarTabla();
+  limpiarCampos();
+  document.getElementById('seccion-texto').style.display = 'none';
+  setStatus('✅ Registro #' + inventario.length + ' agregado. Puedes escanear otra etiqueta.');
+}
+
+function actualizarTabla() {
+  document.getElementById('tabla-wrap').style.display = 'block';
+  document.getElementById('contador').textContent = inventario.length;
+  const tbody = document.getElementById('tabla-body');
+  tbody.innerHTML = '';
+  inventario.forEach((r, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${i+1}</td><td>${r.codigo}</td><td>${r.descripcion}</td><td>${r.cantidad}</td><td>${r.precio}</td><td>${r.fecha}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function limpiarCampos() {
+  ['codigo','descripcion','cantidad','precio','fecha'].forEach(c => {
+    document.getElementById('v-' + c).textContent = '—';
+  });
+}
+
+function reiniciar() {
+  document.getElementById('seccion-texto').style.display = 'none';
+  document.getElementById('texto-detectado').innerHTML = '';
+  palabrasSeleccionadas = [];
+  limpiarCampos();
+  setStatus('Listo para escanear otra etiqueta.');
+}
+
+function limpiarInventario() {
+  if (!confirm('¿Seguro que quieres borrar todo el inventario?')) return;
+  inventario = [];
+  document.getElementById('tabla-body').innerHTML = '';
+  document.getElementById('tabla-wrap').style.display = 'none';
+  document.getElementById('contador').textContent = '0';
+}
+
+function exportarCSV() {
+  if (!inventario.length) return;
+  let csv = 'Código,Descripción,Cantidad,Precio,Fecha\n';
+  inventario.forEach(r => { csv += `"${r.codigo}","${r.descripcion}","${r.cantidad}","${r.precio}","${r.fecha}"\n`; });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  a.download = 'inventario_ocr_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+}
+
+function setStatus(msg) { document.getElementById('status').textContent = msg; }
+</script>
+</body>
+</html>
